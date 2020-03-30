@@ -8,6 +8,7 @@ from hummingbot.client.settings import (
     STRATEGIES,
     CONF_FILE_PATH,
 )
+from decimal import Decimal
 
 
 # Validators
@@ -21,9 +22,22 @@ def is_strategy(value: str) -> bool:
 
 def is_valid_percent(value: str) -> bool:
     try:
-        if 0 <= float(value) <= 1:
-            return True
+        return 0 <= float(value) < 1
     except ValueError:
+        return False
+
+
+def is_valid_decimal(value: str, min_value, max_value) -> bool:
+    try:
+        return Decimal(str(min_value)) <= Decimal(value) < Decimal(str(max_value))
+    except ValueError:
+        return False
+
+
+def is_valid_expiration(value: str) -> bool:
+    try:
+        return float(value) >= 130.0
+    except Exception:
         return False
 
 
@@ -40,3 +54,7 @@ def is_valid_market_trading_pair(market: str, value: str) -> bool:
         return value in trading_pair_fetcher.trading_pairs.get(market) if len(trading_pairs) > 0 else True
     else:
         return True
+
+
+def is_valid_bool(value: str) -> bool:
+    return value.lower() in ('true', 'yes', 'y', 'false', 'no', 'n')

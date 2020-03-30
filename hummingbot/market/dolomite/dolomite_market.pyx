@@ -16,6 +16,7 @@ import logging
 from decimal import *
 from libc.stdint cimport int64_t
 from web3 import Web3
+from web3.exceptions import TransactionNotFound
 from hummingbot.core.data_type.cancellation_result import CancellationResult
 from hummingbot.core.data_type.limit_order import LimitOrder
 from hummingbot.core.data_type.order_book cimport OrderBook
@@ -155,7 +156,6 @@ cdef class DolomiteMarket(MarketBase):
         self._last_timestamp = 0
         self._poll_interval = poll_interval
         self._shared_client = None
-        self._order_tracker_task = None
         self._polling_update_task = None
 
         # State
@@ -398,6 +398,10 @@ cdef class DolomiteMarket(MarketBase):
     cdef c_cancel(self, str trading_pair, str client_order_id):
         safe_ensure_future(self.cancel_order(client_order_id))
 
+    cdef c_stop_tracking_order(self, str order_id):
+        if order_id in self._in_flight_orders:
+            del self._in_flight_orders[order_id]
+
     async def cancel_all(self, timeout_seconds: float) -> List[CancellationResult]:
         results = []
         cancellation_queue = self._in_flight_orders.copy()
@@ -485,9 +489,8 @@ cdef class DolomiteMarket(MarketBase):
     # ----------------------------------------------------------
 
     async def start_network(self):
-        if self._order_tracker_task is not None:
-            await self.stop_network()
-        self._order_tracker_task = safe_ensure_future(self._order_book_tracker.start())
+        await self.stop_network()
+        self._order_book_tracker.start()
         self._polling_update_task = safe_ensure_future(self._polling_update())
 
         if self._trading_required:
@@ -497,11 +500,9 @@ cdef class DolomiteMarket(MarketBase):
             self._pending_approval_tx_hashes.update(tx_hashes)
 
     async def stop_network(self):
-        if self._order_tracker_task is not None:
-            self._order_tracker_task.cancel()
-            self._polling_update_task.cancel()
-            self._pending_approval_tx_hashes.clear()
-        self._order_tracker_task = self._polling_update_task = None
+        self._order_book_tracker.stop()
+        self._pending_approval_tx_hashes.clear()
+        self._polling_update_task = None
 
     async def check_network(self) -> NetworkStatus:
         if self._wallet.network_status is not NetworkStatus.CONNECTED:
@@ -511,8 +512,9 @@ cdef class DolomiteMarket(MarketBase):
             try:
                 await self.api_request("GET", ACCOUNT_INFO_ROUTE.replace(':address', self._wallet.address))
             except Exception:
-                self.logger().info(
-                    f"No Dolomite account for {self._wallet.address}. Create an account on the exchange at dolomite.io")
+                self.logger().warning(f"No Dolomite account for {self._wallet.address}.")
+                self.logger().warning(f"Create an account on the exchange at https://dolomite.io by either: ")
+                self.logger().warning(f"1) submitting a trade if you are located OUTSIDE the US or 2) creating an account if you are located WITHIN the US")
                 return NetworkStatus.NOT_CONNECTED
         except asyncio.CancelledError:
             raise
@@ -692,9 +694,11 @@ cdef class DolomiteMarket(MarketBase):
         if len(self._pending_approval_tx_hashes) > 0:
             try:
                 for tx_hash in list(self._pending_approval_tx_hashes):
-                    receipt = self._web3.eth.getTransactionReceipt(tx_hash)
-                    if receipt is not None:
+                    try:
+                        receipt = self._web3.eth.getTransactionReceipt(tx_hash)
                         self._pending_approval_tx_hashes.remove(tx_hash)
+                    except TransactionNotFound:
+                        pass
             except Exception as e:
                 self.logger().warn("Could not get token approval status. Check Ethereum wallet and network connection.")
                 self.logger().debug(e)

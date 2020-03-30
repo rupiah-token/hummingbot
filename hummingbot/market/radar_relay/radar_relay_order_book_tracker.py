@@ -18,15 +18,15 @@ from hummingbot.logger import HummingbotLogger
 from hummingbot.core.data_type.order_book_tracker import OrderBookTracker, OrderBookTrackerDataSourceType
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
 from hummingbot.market.radar_relay.radar_relay_api_order_book_data_source import RadarRelayAPIOrderBookDataSource
+from hummingbot.market.radar_relay.radar_relay_order_book_message import RadarRelayOrderBookMessage
 from hummingbot.core.data_type.order_book_message import (
     OrderBookMessageType,
-    RadarRelayOrderBookMessage,
     OrderBookMessage,
 )
-from hummingbot.core.data_type.order_book_tracker_entry import RadarRelayOrderBookTrackerEntry
 from hummingbot.core.utils.async_utils import safe_ensure_future
 from hummingbot.market.radar_relay.radar_relay_order_book import RadarRelayOrderBook
 from hummingbot.market.radar_relay.radar_relay_active_order_tracker import RadarRelayActiveOrderTracker
+from hummingbot.market.radar_relay.radar_relay_order_book_tracker_entry import RadarRelayOrderBookTrackerEntry
 
 
 class RadarRelayOrderBookTracker(OrderBookTracker):
@@ -66,24 +66,6 @@ class RadarRelayOrderBookTracker(OrderBookTracker):
     @property
     def exchange_name(self) -> str:
         return "radar_relay"
-
-    async def start(self):
-        await super().start()
-        self._order_book_diff_listener_task = safe_ensure_future(
-            self.data_source.listen_for_order_book_diffs(self._ev_loop, self._order_book_diff_stream)
-        )
-        self._order_book_snapshot_listener_task = safe_ensure_future(
-            self.data_source.listen_for_order_book_snapshots(self._ev_loop, self._order_book_snapshot_stream)
-        )
-        self._refresh_tracking_task = safe_ensure_future(
-            self._refresh_tracking_loop()
-        )
-        self._order_book_diff_router_task = safe_ensure_future(
-            self._order_book_diff_router()
-        )
-        self._order_book_snapshot_router_task = safe_ensure_future(
-            self._order_book_snapshot_router()
-        )
 
     async def _refresh_tracking_tasks(self):
         """

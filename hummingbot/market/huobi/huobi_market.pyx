@@ -59,6 +59,8 @@ from hummingbot.market.market_base import (
     MarketBase,
     NaN,
     s_decimal_NaN)
+from hummingbot.core.utils.tracking_nonce import get_tracking_nonce
+from hummingbot.client.config.fee_overrides_config_map import fee_overrides_config_map
 
 hm_logger = None
 s_decimal_0 = Decimal(0)
@@ -128,7 +130,6 @@ cdef class HuobiMarket(MarketBase):
             data_source_type=order_book_tracker_data_source_type,
             trading_pairs=trading_pairs
         )
-        self._order_tracker_task = None
         self._poll_notifier = asyncio.Event()
         self._poll_interval = poll_interval
         self._shared_client = None
@@ -139,15 +140,18 @@ cdef class HuobiMarket(MarketBase):
         self._tx_tracker = HuobiMarketTransactionTracker(self)
 
     @staticmethod
-    def split_trading_pair(trading_pair: str) -> Tuple[str, str]:
+    def split_trading_pair(trading_pair: str) -> Optional[Tuple[str, str]]:
         try:
             m = TRADING_PAIR_SPLITTER.match(trading_pair)
             return m.group(1), m.group(2)
+        # Exceptions are now logged as warnings in trading pair fetcher
         except Exception as e:
-            raise ValueError(f"Error parsing trading_pair {trading_pair}: {str(e)}")
+            return None
 
     @staticmethod
-    def convert_from_exchange_trading_pair(exchange_trading_pair: str) -> str:
+    def convert_from_exchange_trading_pair(exchange_trading_pair: str) -> Optional[str]:
+        if HuobiMarket.split_trading_pair(exchange_trading_pair) is None:
+            return None
         # Huobi uses lowercase (btcusdt)
         base_asset, quote_asset = HuobiMarket.split_trading_pair(exchange_trading_pair)
         return f"{base_asset.upper()}-{quote_asset.upper()}"
@@ -217,18 +221,15 @@ cdef class HuobiMarket(MarketBase):
         self._async_scheduler.stop()
 
     async def start_network(self):
-        if self._order_tracker_task is not None:
-            self._stop_network()
-        self._order_tracker_task = safe_ensure_future(self._order_book_tracker.start())
+        self._stop_network()
+        self._order_book_tracker.start()
         self._trading_rules_polling_task = safe_ensure_future(self._trading_rules_polling_loop())
         if self._trading_required:
             await self._update_account_id()
             self._status_polling_task = safe_ensure_future(self._status_polling_loop())
 
     def _stop_network(self):
-        if self._order_tracker_task is not None:
-            self._order_tracker_task.cancel()
-            self._order_tracker_task = None
+        self._order_book_tracker.stop()
         if self._status_polling_task is not None:
             self._status_polling_task.cancel()
             self._status_polling_task = None
@@ -360,6 +361,11 @@ cdef class HuobiMarket(MarketBase):
                           object amount,
                           object price):
         # https://www.hbg.com/en-us/about/fee/
+
+        if order_type is OrderType.LIMIT and fee_overrides_config_map["huobi_maker_fee"].value is not None:
+            return TradeFee(percent=fee_overrides_config_map["huobi_maker_fee"].value)
+        if order_type is OrderType.MARKET and fee_overrides_config_map["huobi_taker_fee"].value is not None:
+            return TradeFee(percent=fee_overrides_config_map["huobi_taker_fee"].value)
         return TradeFee(percent=Decimal("0.002"))
 
     async def _update_trading_rules(self):
@@ -681,7 +687,7 @@ cdef class HuobiMarket(MarketBase):
                    object price=s_decimal_0,
                    dict kwargs={}):
         cdef:
-            int64_t tracking_nonce = <int64_t>(time.time() * 1e6)
+            int64_t tracking_nonce = <int64_t> get_tracking_nonce()
             str order_id = f"buy-{trading_pair}-{tracking_nonce}"
 
         safe_ensure_future(self.execute_buy(order_id, trading_pair, amount, order_type, price))
@@ -752,7 +758,7 @@ cdef class HuobiMarket(MarketBase):
                     object order_type=OrderType.MARKET, object price=s_decimal_0,
                     dict kwargs={}):
         cdef:
-            int64_t tracking_nonce = <int64_t>(time.time() * 1e6)
+            int64_t tracking_nonce = <int64_t> get_tracking_nonce()
             str order_id = f"sell-{trading_pair}-{tracking_nonce}"
         safe_ensure_future(self.execute_sell(order_id, trading_pair, amount, order_type, price))
         return order_id

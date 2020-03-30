@@ -165,10 +165,19 @@ class BambooRelayMarketCoordinatedUnitTest(unittest.TestCase):
         return self.ev_loop.run_until_complete(self.run_parallel_async(*tasks))
 
     def test_get_fee(self):
-        maker_buy_trade_fee: TradeFee = self.market.get_fee("ZRX", "WETH", OrderType.LIMIT, TradeType.BUY, Decimal(20), Decimal(0.01))
+        maker_buy_trade_fee: TradeFee = self.market.get_fee(conf.test_bamboo_relay_base_token_symbol,
+                                                            conf.test_bamboo_relay_quote_token_symbol,
+                                                            OrderType.LIMIT,
+                                                            TradeType.BUY,
+                                                            Decimal(20),
+                                                            Decimal(0.01))
         self.assertEqual(maker_buy_trade_fee.percent, 0)
         self.assertEqual(len(maker_buy_trade_fee.flat_fees), 0)
-        taker_buy_trade_fee: TradeFee = self.market.get_fee("ZRX", "WETH", OrderType.MARKET, TradeType.BUY, Decimal(20))
+        taker_buy_trade_fee: TradeFee = self.market.get_fee(conf.test_bamboo_relay_base_token_symbol,
+                                                            conf.test_bamboo_relay_quote_token_symbol,
+                                                            OrderType.MARKET,
+                                                            TradeType.BUY,
+                                                            Decimal(20))
         self.assertEqual(taker_buy_trade_fee.percent, 0)
         self.assertEqual(len(taker_buy_trade_fee.flat_fees), 2)
         self.assertEqual(taker_buy_trade_fee.flat_fees[0][0], "ETH")
@@ -178,32 +187,6 @@ class BambooRelayMarketCoordinatedUnitTest(unittest.TestCase):
         balances = self.market.get_all_balances()
         self.assertGreaterEqual((balances["ETH"]), s_decimal_0)
         self.assertGreaterEqual((balances[self.quote_token_asset]), s_decimal_0)
-
-    def test_limit_order_amount_modified(self):
-        trading_pair: str = self.base_token_asset + "-" + self.quote_token_asset
-        current_price: Decimal = self.market.get_price(trading_pair, True)
-        amount = Decimal("0.001")
-        expires = int(time.time() + 60 * 3)
-        quantized_amount: Decimal = self.market.quantize_order_amount(trading_pair, amount)
-        buy_order_id = self.market.buy(trading_pair=trading_pair,
-                                       amount=amount,
-                                       order_type=OrderType.LIMIT,
-                                       price=current_price - Decimal("0.2") * current_price,
-                                       expiration_ts=expires)
-        [buy_order_opened_event] = self.run_parallel(self.market_logger.wait_for(BuyOrderCreatedEvent))
-        self.assertEqual(self.base_token_asset + "-" + self.quote_token_asset, buy_order_opened_event.trading_pair)
-        self.assertEqual(OrderType.LIMIT, buy_order_opened_event.type)
-        self.assertEqual(float(quantized_amount), float(buy_order_opened_event.amount))
-
-        
-        
-        [cancellation_results,
-         buy_order_cancelled_event] = self.run_parallel(self.market.cancel_order(buy_order_id),
-                                                        self.market_logger.wait_for(OrderCancelledEvent))
-        self.assertEqual(buy_order_opened_event.order_id, buy_order_cancelled_event.order_id)
-
-        # Reset the logs
-        self.market_logger.clear()
 
     def test_single_limit_order_cancel(self):
         trading_pair: str = self.base_token_asset + "-" + self.quote_token_asset

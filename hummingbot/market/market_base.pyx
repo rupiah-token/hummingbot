@@ -4,8 +4,8 @@ from typing import (
     Dict,
     List,
     Tuple,
+    Optional,
     Iterator)
-
 from hummingbot.core.data_type.cancellation_result import CancellationResult
 from hummingbot.core.data_type.order_book_query_result import (
     OrderBookQueryResult,
@@ -47,25 +47,26 @@ cdef class MarketBase(NetworkIterator):
 
     def __init__(self):
         super().__init__()
-        self.event_reporter = EventReporter(event_source=self.name)
-        self.event_logger = EventLogger(event_source=self.name)
+        self._event_reporter = EventReporter(event_source=self.name)
+        self._event_logger = EventLogger(event_source=self.name)
         for event_tag in self.MARKET_EVENTS:
-            self.c_add_listener(event_tag.value, self.event_reporter)
-            self.c_add_listener(event_tag.value, self.event_logger)
+            self.c_add_listener(event_tag.value, self._event_reporter)
+            self.c_add_listener(event_tag.value, self._event_logger)
 
         self._account_balances = {}  # Dict[asset_name:str, Decimal]
         self._account_available_balances = {}  # Dict[asset_name:str, Decimal]
         self._order_book_tracker = None
 
     @staticmethod
-    def split_trading_pair(trading_pair: str) -> Tuple[str, str]:
+    def split_trading_pair(trading_pair: str) -> Optional[Tuple[str, str]]:
         try:
             return tuple(trading_pair.split('-'))
+        # Exceptions are logged as warnings in Trading pair fetcher class
         except Exception:
-            raise ValueError(f"Error parsing trading_pair {trading_pair}")
+            return None
 
     @staticmethod
-    def convert_from_exchange_trading_pair(exchange_trading_pair: str) -> str:
+    def convert_from_exchange_trading_pair(exchange_trading_pair: str) -> Optional[str]:
         return exchange_trading_pair
 
     @staticmethod
@@ -86,7 +87,7 @@ cdef class MarketBase(NetworkIterator):
 
     @property
     def event_logs(self) -> List[any]:
-        return self.event_logger.event_log
+        return self._event_logger.event_log
 
     @property
     def order_books(self) -> Dict[str, OrderBook]:
@@ -137,6 +138,9 @@ cdef class MarketBase(NetworkIterator):
         raise NotImplementedError
 
     cdef c_cancel(self, str trading_pair, str client_order_id):
+        raise NotImplementedError
+
+    cdef c_stop_tracking_order(self, str order_id):
         raise NotImplementedError
 
     cdef object c_get_fee(self,

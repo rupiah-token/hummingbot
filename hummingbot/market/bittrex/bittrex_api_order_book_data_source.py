@@ -17,12 +17,14 @@ from async_timeout import timeout
 from hummingbot.core.data_type.order_book import OrderBook
 from hummingbot.core.data_type.order_book_message import OrderBookMessage
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
-from hummingbot.core.data_type.order_book_tracker_entry import OrderBookTrackerEntry, BittrexOrderBookTrackerEntry
+from hummingbot.core.data_type.order_book_tracker_entry import OrderBookTrackerEntry
 from hummingbot.core.utils import async_ttl_cache
 from hummingbot.core.utils.async_utils import safe_gather
 from hummingbot.logger import HummingbotLogger
 from hummingbot.market.bittrex.bittrex_active_order_tracker import BittrexActiveOrderTracker
 from hummingbot.market.bittrex.bittrex_order_book import BittrexOrderBook
+from hummingbot.market.bittrex.bittrex_order_book_tracker_entry import BittrexOrderBookTrackerEntry
+
 
 EXCHANGE_NAME = "Bittrex"
 
@@ -265,7 +267,7 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
             self.logger().warning("Message recv() timed out. Going to reconnect...")
             return
 
-    async def _transform_raw_message(self, msg) -> Dict[str, Any]:
+    def _transform_raw_message(self, msg) -> Dict[str, Any]:
         def _decode_message(raw_message: bytes) -> Dict[str, Any]:
             try:
                 decoded_msg: bytes = decompress(b64decode(raw_message, validate=True), -MAX_WBITS)
@@ -342,7 +344,7 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
             connection, hub = await self.websocket_connection()
             try:
                 async for raw_message in self._socket_stream():
-                    decoded: Dict[str, Any] = await self._transform_raw_message(raw_message)
+                    decoded: Dict[str, Any] = self._transform_raw_message(raw_message)
                     trading_pair: str = decoded["results"].get("M")
 
                     if not trading_pair:  # Ignores any other websocket response messages

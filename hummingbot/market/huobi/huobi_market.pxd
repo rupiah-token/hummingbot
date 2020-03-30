@@ -14,7 +14,6 @@ cdef class HuobiMarket(MarketBase):
         dict _in_flight_orders
         double _last_poll_timestamp
         double _last_timestamp
-        public object _order_tracker_task
         object _poll_notifier
         double _poll_interval
         object _shared_client
@@ -32,4 +31,3 @@ cdef class HuobiMarket(MarketBase):
                                 object trade_type,
                                 object price,
                                 object amount)
-    cdef c_stop_tracking_order(self, str order_id)

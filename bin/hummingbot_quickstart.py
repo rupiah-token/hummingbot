@@ -31,6 +31,7 @@ from bin.hummingbot import (
     main as normal_start,
 )
 from hummingbot.client.config.config_helpers import write_config_to_yml
+from hummingbot.core.utils.exchange_rate_conversion import ExchangeRateConversion
 
 
 class CmdlineParser(ThrowingArgumentParser):
@@ -67,6 +68,8 @@ async def quick_start():
         await create_yml_files()
         init_logging("hummingbot_logs.yml")
         read_configs_from_yml()
+        ExchangeRateConversion.get_instance().start()
+        await ExchangeRateConversion.get_instance().wait_till_ready()
         hb = HummingbotApplication.main_application()
 
         in_memory_config_map.get("password").value = password
@@ -74,6 +77,10 @@ async def quick_start():
         in_memory_config_map.get("strategy").validate(strategy)
         in_memory_config_map.get("strategy_file_path").value = config_file_name
         in_memory_config_map.get("strategy_file_path").validate(config_file_name)
+
+        # To ensure quickstart runs with the default value of False for kill_switch_enabled if not present
+        if not global_config_map.get("kill_switch_enabled"):
+            global_config_map.get("kill_switch_enabled").value = False
 
         if wallet and password:
             global_config_map.get("wallet").value = wallet

@@ -21,14 +21,15 @@ from hummingbot.logger import HummingbotLogger
 from hummingbot.core.data_type.order_book_tracker import OrderBookTracker, OrderBookTrackerDataSourceType
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
 from hummingbot.market.coinbase_pro.coinbase_pro_api_order_book_data_source import CoinbaseProAPIOrderBookDataSource
+from hummingbot.market.coinbase_pro.coinbase_pro_order_book_message import CoinbaseProOrderBookMessage
 from hummingbot.core.data_type.order_book_message import (
     OrderBookMessageType,
-    CoinbaseProOrderBookMessage,
-    OrderBookMessage)
-from hummingbot.core.data_type.order_book_tracker_entry import CoinbaseProOrderBookTrackerEntry
+    OrderBookMessage,
+)
 from hummingbot.core.utils.async_utils import safe_ensure_future
 from hummingbot.market.coinbase_pro.coinbase_pro_order_book import CoinbaseProOrderBook
 from hummingbot.market.coinbase_pro.coinbase_pro_active_order_tracker import CoinbaseProActiveOrderTracker
+from hummingbot.market.coinbase_pro.coinbase_pro_order_book_tracker_entry import CoinbaseProOrderBookTrackerEntry
 
 
 class CoinbaseProOrderBookTracker(OrderBookTracker):
@@ -77,29 +78,6 @@ class CoinbaseProOrderBookTracker(OrderBookTracker):
         Name of the current exchange
         """
         return "coinbase_pro"
-
-    async def start(self):
-        await super().start()
-        """
-        *required
-        Start all listeners and tasks
-        """
-
-        self._order_book_diff_listener_task = safe_ensure_future(
-            self.data_source.listen_for_order_book_diffs(self._ev_loop, self._order_book_diff_stream)
-        )
-        self._order_book_snapshot_listener_task = safe_ensure_future(
-            self.data_source.listen_for_order_book_snapshots(self._ev_loop, self._order_book_snapshot_stream)
-        )
-        self._refresh_tracking_task = safe_ensure_future(
-            self._refresh_tracking_loop()
-        )
-        self._order_book_diff_router_task = safe_ensure_future(
-            self._order_book_diff_router()
-        )
-        self._order_book_snapshot_router_task = safe_ensure_future(
-            self._order_book_snapshot_router()
-        )
 
     async def _refresh_tracking_tasks(self):
         """
